@@ -1,6 +1,6 @@
 # dump_vortex_mods.py
 
-Reads mods from local files created by the [Vortex](https://www.nexusmods.com/about/vortex/) mod manager and dumps your **currently enabled mod list** to a `.txt` file, without having to click through the Vortex UI.
+Reads mods from local files created by the [Vortex](https://www.nexusmods.com/about/vortex/) mod manager and dumps your **currently enabled mod list** to a `.txt` file — complete with a Nexus Mods link for each mod — without having to click through the Vortex UI.
 
 ## Requirements
 
@@ -43,6 +43,8 @@ Vortex uses its own internal slug for each game, which doesn't always match the 
 
 ⚠️ These are correct as of when this README was written, but Vortex occasionally renames game ids after updates. **If a game id above doesn't work, trust the script's own auto-detected list over this table** — run it with no `--game` flag and copy the id it prints for your install.
 
+Note: Vortex's internal game id and Nexus Mods' URL slug aren't always the same string (e.g. Vortex calls Skyrim SE `skyrimse`, but its Nexus URL is `skyrimspecialedition`). The script has a small built-in mapping for the mismatches it knows about; for everything else it assumes the Vortex id and Nexus slug match, which is true for most games.
+
 ### Other options
 
 ```bash
@@ -51,8 +53,20 @@ python dump_vortex_mods.py --game skyrimse --profile <id>     # pick a specific 
 python dump_vortex_mods.py --game skyrimse --csv mods.csv     # also export as CSV
 python dump_vortex_mods.py --game skyrimse --no-txt           # console only, skip the .txt file
 python dump_vortex_mods.py --game skyrimse --txt myfile.txt   # custom output filename/location
+python dump_vortex_mods.py --game skyrimse --no-links         # skip Nexus URLs, just names/versions
+python dump_vortex_mods.py --game skyrimse --open             # open all links without asking
+python dump_vortex_mods.py --game skyrimse --no-open-prompt   # never ask/open (e.g. for scripting)
 python dump_vortex_mods.py --vortex-dir "C:\ProgramData\Vortex"  # for "Shared" multi-user mode installs
 ```
+
+## Nexus Mods links
+
+Each mod in the dump gets a Nexus Mods URL:
+
+- **Direct link** — if the mod was installed from Nexus, Vortex already stores the exact numeric mod ID internally, so the script builds a direct link straight to that mod's page (e.g. `nexusmods.com/skyrimspecialedition/mods/3863`). No searching or guessing involved.
+- **Search fallback** — if a mod wasn't sourced from Nexus (manually installed, from another site, etc.), there's no ID to link to, so instead it builds a Nexus site-search URL for that mod's name, clearly labeled `(search link, not confirmed)` in the output so you know it's not guaranteed accurate.
+
+After the dump, the script will ask if you want to open every link in your browser (one tab per mod, with a short delay between each so it doesn't flood your browser). Skip the prompt with `--open` (open automatically) or `--no-open-prompt` (never ask). If you have a large modlist, consider answering "no" and opening links selectively from the `.txt` file instead — 100+ mods means 100+ tabs.
 
 ## How it works
 
@@ -66,6 +80,7 @@ It looks in, in order of preference:
 ## Known limitations / troubleshooting
 
 - **Undocumented format:** Vortex doesn't publish this JSON structure as a stable public API. This script's parsing (`persistent.mods`, `persistent.profiles`, `modState.enabled`) was based on Vortex's own docs/wiki and cross-checked against how other community tools read the same files — but a future Vortex update could rename a field and break this. If that happens, it should fail with a clear error rather than doing anything destructive, since it only ever reads files.
+- **Nexus links:** direct links are only as good as the `modId`/`source` Vortex recorded — if those are missing or wrong for some mod, you'll get a search-fallback link instead, which is labeled as such. Domain-slug mismatches (Vortex id vs. Nexus URL slug) are only handled for the games explicitly listed in the script's mapping table; anything else assumes they match.
 - **Windows only.** No plans to support Linux/Mac since Vortex itself doesn't run there natively (Proton/Steam Deck users: point `--vortex-dir` at the Vortex folder inside your compatdata prefix, e.g. something like `.../compatdata/<id>/pfx/drive_c/ProgramData/vortex`).
 - **"Shared" mode:** if you set Vortex to Shared multi-user mode, pass `--vortex-dir "C:\ProgramData\Vortex"` explicitly — auto-detection only checks the default paths.
 
