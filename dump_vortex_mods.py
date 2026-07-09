@@ -136,8 +136,43 @@ def open_links(rows, delay=0.4):
             time.sleep(delay)
 
 
+BANNER_UNICODE = r"""
+██╗    ██╗██████╗ ██████╗
+██║    ██║██╔══██╗██╔══██╗
+██║ █╗ ██║██║  ██║██████╔╝
+██║███╗██║██║  ██║██╔══██╗
+╚███╔███╔╝██████╔╝██████╔╝
+ ╚══╝╚══╝ ╚═════╝ ╚═════╝
+     Vortex Mod Dumper
+"""
+
+BANNER_ASCII = r"""
+ __        ______  ____
+ \ \      / /  _ \| __ )
+  \ \ /\ / /| | | |  _ \
+   \ V  V / | |_| | |_) |
+    \_/\_/  |____/|____/
+     Vortex Mod Dumper
+"""
+
+
+def print_banner():
+    # Classic cmd.exe (non-UTF8 codepage) chokes on the box-drawing
+    # characters, so fall back to a plain-ASCII version if that happens.
+    try:
+        print(BANNER_UNICODE, file=sys.stderr)
+    except UnicodeEncodeError:
+        print(BANNER_ASCII, file=sys.stderr)
+
+
 def main():
+    # Peek at sys.argv directly so the banner can be suppressed before
+    # argparse (and its own --help output) even runs.
+    if "--no-banner" not in sys.argv:
+        print_banner()
+
     ap = argparse.ArgumentParser(description="Dump Vortex's active mod list.")
+    ap.add_argument("--no-banner", action="store_true", help="Skip the ASCII banner on launch")
     ap.add_argument("--vortex-dir", type=str, help="Path to Vortex's data folder (contains state.json)")
     ap.add_argument("--game", type=str, help="Game id as Vortex names it internally (e.g. skyrimse, fallout4, cyberpunk2077)")
     ap.add_argument("--profile", type=str, help="Profile id to use (if a game has multiple profiles)")

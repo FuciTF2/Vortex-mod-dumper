@@ -56,6 +56,7 @@ python dump_vortex_mods.py --game skyrimse --txt myfile.txt   # custom output fi
 python dump_vortex_mods.py --game skyrimse --no-links         # skip Nexus URLs, just names/versions
 python dump_vortex_mods.py --game skyrimse --open             # open all links without asking
 python dump_vortex_mods.py --game skyrimse --no-open-prompt   # never ask/open (e.g. for scripting)
+python dump_vortex_mods.py --game skyrimse --no-banner        # skip the ASCII banner
 python dump_vortex_mods.py --vortex-dir "C:\ProgramData\Vortex"  # for "Shared" multi-user mode installs
 ```
 
