@@ -16,8 +16,15 @@ Usage:
 Output:
 - By default, a .txt file is written next to this script, named
   "<game>_<profile>_mods.txt" (e.g. cyberpunk2077_abc123_mods.txt).
-- Use --txt <path> to pick a custom name/location, or --no-txt to skip
-  writing a file and only print to the console.
+- Each mod also gets a Nexus Mods URL. If Vortex recorded a Nexus mod id for
+  it (i.e. it was installed from Nexus), that's a direct link to the exact
+  mod page. Otherwise it falls back to a Nexus site-search link for that
+  mod's name, labeled "(search link, not confirmed)".
+- Use --txt <path> to pick a custom name/location, --no-txt to skip writing
+  a file, or --no-links to drop the Nexus URLs entirely.
+- After the dump, you'll be asked whether to open all the links in your
+  default browser (one tab per mod). Use --open to skip the prompt and just
+  open them, or --no-open-prompt to never ask (e.g. for scripting/cron).
 
 Notes:
 - Vortex must have written state at least once (i.e. has been run). You do NOT
@@ -31,8 +38,41 @@ import argparse
 import json
 import os
 import sys
+import time
+import webbrowser
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
+
+# Vortex's internal game id doesn't always match the URL slug Nexus uses.
+# Confirmed against live nexusmods.com URLs where possible; if a game_id
+# isn't listed here, we assume the Vortex id IS the Nexus domain (true for
+# most games, e.g. fallout4, witcher3, stardewvalley, cyberpunk2077).
+NEXUS_DOMAIN_OVERRIDES = {
+    "skyrimse": "skyrimspecialedition",
+    "falloutnv": "newvegas",
+    "skyrimvr": "skyrimspecialedition",
+    "fallout4vr": "fallout4",
+    "teso": "elderscrollsonline",
+}
+
+
+def nexus_domain(game_id: str) -> str:
+    return NEXUS_DOMAIN_OVERRIDES.get(game_id, game_id)
+
+
+def build_nexus_url(game_id: str, attrs: dict, display_name: str) -> str:
+    """Prefer a direct link using the Nexus mod id Vortex already stored.
+    Falls back to a Nexus site-search URL if we don't have one (e.g. the
+    mod wasn't installed from Nexus)."""
+    domain = nexus_domain(game_id)
+    nexus_mod_id = attrs.get("modId")
+    source = (attrs.get("source") or "").lower()
+    if nexus_mod_id and source == "nexus":
+        return f"https://www.nexusmods.com/{domain}/mods/{nexus_mod_id}"
+    # Fallback: a general Nexus site-search link (not a scraped/guessed result,
+    # just points you at the search you'd otherwise type in yourself)
+    return f"https://www.nexusmods.com/search/?gsearch={quote(display_name)}&gsearchtype=mods"
 
 
 def find_default_vortex_dir() -> Optional[Path]:
@@ -87,6 +127,15 @@ def mod_display_name(mod_id: str, attributes: dict) -> str:
     )
 
 
+def open_links(rows, delay=0.4):
+    urls = [r["nexus_url"] for r in rows if r.get("nexus_url")]
+    for i, url in enumerate(urls, 1):
+        webbrowser.open_new_tab(url)
+        print(f"  opened {i}/{len(urls)}: {url}", file=sys.stderr)
+        if i < len(urls):
+            time.sleep(delay)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Dump Vortex's active mod list.")
     ap.add_argument("--vortex-dir", type=str, help="Path to Vortex's data folder (contains state.json)")
@@ -96,6 +145,9 @@ def main():
     ap.add_argument("--csv", type=str, help="Also write output to this CSV path")
     ap.add_argument("--txt", type=str, help="Path for the .txt dump (default: <game>_<profile>_mods.txt next to this script)")
     ap.add_argument("--no-txt", action="store_true", help="Skip writing the .txt file, just print to console")
+    ap.add_argument("--no-links", action="store_true", help="Skip Nexus URLs, just list mod names/versions")
+    ap.add_argument("--open", action="store_true", help="Open all links in your browser without prompting")
+    ap.add_argument("--no-open-prompt", action="store_true", help="Never open links or ask to (e.g. for scripting/cron)")
     args = ap.parse_args()
 
     vortex_dir = Path(args.vortex_dir) if args.vortex_dir else find_default_vortex_dir()
@@ -163,13 +215,17 @@ def main():
         if not args.all and not enabled:
             continue
         attrs = mod_info.get("attributes", {})
+        name = mod_display_name(mod_id, attrs)
+        is_direct_link = bool(attrs.get("modId")) and (attrs.get("source") or "").lower() == "nexus"
         rows.append({
-            "name": mod_display_name(mod_id, attrs),
+            "name": name,
             "mod_id": mod_id,
             "version": attrs.get("version", ""),
             "enabled": enabled,
             "source": attrs.get("source", ""),
             "author": attrs.get("author", ""),
+            "nexus_url": "" if args.no_links else build_nexus_url(game_id, attrs, name),
+            "link_type": "" if args.no_links else ("direct" if is_direct_link else "search"),
         })
 
     rows.sort(key=lambda r: r["name"].lower())
@@ -180,11 +236,14 @@ def main():
         flag = "on " if r["enabled"] else "off"
         ver = f" v{r['version']}" if r["version"] else ""
         print(f"  [{flag}] {r['name']}{ver}")
+        if not args.no_links:
+            marker = "" if r["link_type"] == "direct" else "  (search link, not confirmed)"
+            print(f"        {r['nexus_url']}{marker}")
 
     if args.csv:
         import csv
         with open(args.csv, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["name", "mod_id", "version", "enabled", "source", "author"])
+            writer = csv.DictWriter(f, fieldnames=["name", "mod_id", "version", "enabled", "source", "author", "nexus_url", "link_type"])
             writer.writeheader()
             writer.writerows(rows)
         print(f"\nWrote CSV to {args.csv}", file=sys.stderr)
@@ -203,8 +262,34 @@ def main():
                 flag = "on " if r["enabled"] else "off"
                 ver = f" v{r['version']}" if r["version"] else ""
                 f.write(f"[{flag}] {r['name']}{ver}\n")
+                if not args.no_links:
+                    marker = "" if r["link_type"] == "direct" else "  (search link, not confirmed)"
+                    f.write(f"      {r['nexus_url']}{marker}\n")
 
         print(f"\nWrote text dump to {txt_path}", file=sys.stderr)
+
+    # Offer to open the links in a browser
+    linked_rows = [r for r in rows if r.get("nexus_url")]
+    if linked_rows and not args.no_open_prompt:
+        if args.open:
+            should_open = True
+        else:
+            count = len(linked_rows)
+            direct_count = sum(1 for r in linked_rows if r["link_type"] == "direct")
+            search_count = count - direct_count
+            prompt = (
+                f"\nOpen all {count} link(s) in your browser? "
+                f"({direct_count} direct, {search_count} search fallback) "
+                f"This will open {count} browser tab(s). [y/N] "
+            )
+            answer = input(prompt).strip().lower()
+            should_open = answer in ("y", "yes")
+
+        if should_open:
+            print(f"\nOpening {len(linked_rows)} link(s)...", file=sys.stderr)
+            open_links(linked_rows)
+        else:
+            print("\nSkipped opening links.", file=sys.stderr)
 
 
 if __name__ == "__main__":
