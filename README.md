@@ -3,7 +3,7 @@
 Two small companion scripts for the [Vortex](https://www.nexusmods.com/about/vortex/) mod manager:
 
 - **`dump_vortex_mods.py`** — reads Vortex's own local state and dumps your currently enabled mod list (with Nexus links) to a `.txt` file, no clicking through the Vortex UI needed.
-- **`open_modlist_links.py`** — takes any `.txt` modlist (one produced by the dumper, or just a plain list of names) and resolves/opens Nexus links for it.
+- **`mod_searcher.py`** — takes any `.txt` modlist (one produced by the dumper, or just a plain list of names) and resolves/opens Nexus links for it.
 
 ---
 
@@ -99,7 +99,7 @@ If something breaks, please open an issue with the error message and (if you're 
 
 ---
 
-## open_modlist_links.py
+## mod_searcher.py
 
 A standalone companion script — doesn't touch Vortex or its state files at all. Point it at any `.txt` file with mod names in it and it resolves (and optionally opens) Nexus links for every entry.
 
@@ -111,17 +111,17 @@ Handles two kinds of input:
 ### Usage
 
 ```bash
-python open_modlist_links.py mods.txt
+python mod_searcher.py mods.txt
 ```
 
 That prints the resolved name + URL for every mod in the file, then asks whether to open them all in your browser — opened in batches of 10 (`--batch-size` to change), confirming before each new batch so you're never hit with a wall of tabs at once.
 
 ```bash
-python open_modlist_links.py mods.txt --out links.txt      # also write the resolved list to a file
-python open_modlist_links.py mods.txt --open               # open all links without asking
-python open_modlist_links.py mods.txt --no-open-prompt     # never ask/open (e.g. for scripting)
-python open_modlist_links.py mods.txt --batch-size 5        # open 5 links at a time instead of 10
-python open_modlist_links.py mods.txt --no-banner           # skip the ASCII banner
+python mod_searcher.py mods.txt --out links.txt      # also write the resolved list to a file
+python mod_searcher.py mods.txt --open               # open all links without asking
+python mod_searcher.py mods.txt --no-open-prompt     # never ask/open (e.g. for scripting)
+python mod_searcher.py mods.txt --batch-size 5        # open 5 links at a time instead of 10
+python mod_searcher.py mods.txt --no-banner           # skip the ASCII banner
 ```
 
 ### Requirements
