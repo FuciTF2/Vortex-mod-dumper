@@ -18,13 +18,16 @@ Output:
   "<game>_<profile>_mods.txt" (e.g. cyberpunk2077_abc123_mods.txt).
 - Each mod also gets a Nexus Mods URL. If Vortex recorded a Nexus mod id for
   it (i.e. it was installed from Nexus), that's a direct link to the exact
-  mod page. Otherwise it falls back to a Nexus site-search link for that
+  mod page. Otherwise it falls back to a Google search scoped to nexusmods.com for that
   mod's name, labeled "(search link, not confirmed)".
 - Use --txt <path> to pick a custom name/location, --no-txt to skip writing
   a file, or --no-links to drop the Nexus URLs entirely.
 - After the dump, you'll be asked whether to open all the links in your
-  default browser (one tab per mod). Use --open to skip the prompt and just
-  open them, or --no-open-prompt to never ask (e.g. for scripting/cron).
+  default browser. Links open in batches of 10 (configurable via
+  --batch-size), asking to continue after each batch — so you're never
+  hit with 80 tabs at once. Use --open to skip the initial prompt and just
+  start opening, or --no-open-prompt to never ask at all (e.g. for
+  scripting/cron).
 
 Notes:
 - Vortex must have written state at least once (i.e. has been run). You do NOT
@@ -63,16 +66,19 @@ def nexus_domain(game_id: str) -> str:
 
 def build_nexus_url(game_id: str, attrs: dict, display_name: str) -> str:
     """Prefer a direct link using the Nexus mod id Vortex already stored.
-    Falls back to a Nexus site-search URL if we don't have one (e.g. the
-    mod wasn't installed from Nexus)."""
+    Falls back to a Google site-search scoped to nexusmods.com if we don't
+    have one (e.g. the mod wasn't installed from Nexus).
+
+    Note: Nexus's own /search page does NOT read search terms from the URL
+    (confirmed via their support forum — it's driven by a backend API call,
+    not a URL param), so a "prefilled Nexus search" link isn't actually
+    possible. A Google site-search is the reliable alternative."""
     domain = nexus_domain(game_id)
     nexus_mod_id = attrs.get("modId")
     source = (attrs.get("source") or "").lower()
     if nexus_mod_id and source == "nexus":
         return f"https://www.nexusmods.com/{domain}/mods/{nexus_mod_id}"
-    # Fallback: a general Nexus site-search link (not a scraped/guessed result,
-    # just points you at the search you'd otherwise type in yourself)
-    return f"https://www.nexusmods.com/search/?gsearch={quote(display_name)}&gsearchtype=mods"
+    return f"https://www.google.com/search?q=site:nexusmods.com+{quote(display_name)}"
 
 
 def find_default_vortex_dir() -> Optional[Path]:
@@ -127,13 +133,26 @@ def mod_display_name(mod_id: str, attributes: dict) -> str:
     )
 
 
-def open_links(rows, delay=0.4):
+def open_links(rows, batch_size=10, delay=0.4):
     urls = [r["nexus_url"] for r in rows if r.get("nexus_url")]
-    for i, url in enumerate(urls, 1):
-        webbrowser.open_new_tab(url)
-        print(f"  opened {i}/{len(urls)}: {url}", file=sys.stderr)
-        if i < len(urls):
-            time.sleep(delay)
+    total = len(urls)
+    opened = 0
+    idx = 0
+    while idx < total:
+        batch = urls[idx: idx + batch_size]
+        for j, url in enumerate(batch, 1):
+            webbrowser.open_new_tab(url)
+            opened += 1
+            print(f"  opened {opened}/{total}: {url}", file=sys.stderr)
+            if j < len(batch):
+                time.sleep(delay)
+        idx += batch_size
+        if idx < total:
+            next_count = min(batch_size, total - idx)
+            answer = input(f"\nOpened {opened}/{total}. Open next {next_count}? [Y/n] ").strip().lower()
+            if answer in ("n", "no"):
+                print(f"Stopped after opening {opened}/{total} link(s).", file=sys.stderr)
+                return
 
 
 BANNER_UNICODE = r"""
@@ -183,6 +202,7 @@ def main():
     ap.add_argument("--no-links", action="store_true", help="Skip Nexus URLs, just list mod names/versions")
     ap.add_argument("--open", action="store_true", help="Open all links in your browser without prompting")
     ap.add_argument("--no-open-prompt", action="store_true", help="Never open links or ask to (e.g. for scripting/cron)")
+    ap.add_argument("--batch-size", type=int, default=10, help="How many links to open before asking to continue (default: 10)")
     args = ap.parse_args()
 
     vortex_dir = Path(args.vortex_dir) if args.vortex_dir else find_default_vortex_dir()
@@ -315,14 +335,14 @@ def main():
             prompt = (
                 f"\nOpen all {count} link(s) in your browser? "
                 f"({direct_count} direct, {search_count} search fallback) "
-                f"This will open {count} browser tab(s). [y/N] "
+                f"Opens in batches of {args.batch_size}, confirming between each. [y/N] "
             )
             answer = input(prompt).strip().lower()
             should_open = answer in ("y", "yes")
 
         if should_open:
             print(f"\nOpening {len(linked_rows)} link(s)...", file=sys.stderr)
-            open_links(linked_rows)
+            open_links(linked_rows, batch_size=args.batch_size)
         else:
             print("\nSkipped opening links.", file=sys.stderr)
 
